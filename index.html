@@ -489,6 +489,7 @@ var PROXY2 = 'https://corsproxy.io/?';
 var _allEvents=[], _evData=[], _actData=[], _lpData=[], _scRows=[];
 var _lbWindow='all', _mktsLoaded=false, _lbLoaded=false, _scFilter='all';
 var _gsItems=[];
+var _bookCache={};
 
 /* ═════ UTILS ═════ */
 function ge(id){ return document.getElementById(id); }
@@ -543,6 +544,11 @@ function fj(url){
         });
     });
 }
+function getBook(tokenId){
+  if(!tokenId)return Promise.resolve(null);
+  if(_bookCache[tokenId])return Promise.resolve(_bookCache[tokenId]);
+  return fj(CLOB+'/book?token_id='+tokenId).then(function(ob){ _bookCache[tokenId]=ob; return ob; }).catch(function(){ return null; });
+}
 
 /* ═════ NAVIGATION ═════ */
 function goPage(name){
@@ -564,41 +570,20 @@ function openSearch(){
 function closeSearch(){ ge('sov').classList.remove('on'); }
 function renderSearch(q){
   var el=ge('gsRes');
-  if(!_allEvents.length){
-    el.innerHTML='<div class="sempty">⏳ Loading market index…</div>';
-    return;
-  }
+  if(!_allEvents.length){ el.innerHTML='<div class="sempty">⏳ Loading market index…</div>'; return; }
   if(!q){ el.innerHTML='<div class="sempty">Search across '+_allEvents.length+' active markets</div>'; setTxt('gsCnt',''); return; }
   var qL=q.toLowerCase();
-  var res=_allEvents.filter(function(e){
-    return (e.title||'').toLowerCase().indexOf(qL)>-1||
-           (e.category||'').toLowerCase().indexOf(qL)>-1||
-           (e.slug||'').toLowerCase().indexOf(qL)>-1;
-  }).slice(0,15);
-  _gsItems=res;
-  setTxt('gsCnt',res.length+' results');
-  if(!res.length){ el.innerHTML='<div class="sempty">No markets found for "'+esc(q)+'"</div>'; return; }
-  el.innerHTML=res.map(function(e,i){
-    var mkts=e.markets||[]; var m0=mkts[0]||{};
-    var price=parseFloat(m0.lastTradePrice||0);
-    var vol24=parseFloat(e.volume24hr||0);
-    var isM=mkts.length>1;
-    var cat=e.category||'';
-    var ico=cat.match(/sport|soccer|nba|football/i)?'⚽':cat.match(/crypto|bitcoin|btc/i)?'₿':cat.match(/politic|election/i)?'🗳':'📊';
-    var pc=price>=.5?'var(--green)':'var(--red)';
-    return '<div class="sitem" onclick="gsClick('+i+')">'+
-      '<div class="sitem-ico">'+ico+'</div>'+
-      '<div class="sitem-body">'+
-        '<div class="sitem-title">'+esc(trunc(e.title||'Unknown',54))+'</div>'+
-        '<div class="sitem-meta">'+
-          (price&&!isM?'<span class="badge bg" style="color:'+pc+';font-family:JetBrains Mono,monospace">'+(price*100).toFixed(0)+'%</span>':'')+ 
-          (vol24?'<span class="badge bg">24h '+fm(vol24)+'</span>':'')+
-          (cat?'<span class="badge bbl">'+esc(cat)+'</span>':'')+
-          (isM?'<span class="badge bg">'+mkts.length+' options</span>':'')+
-        '</div>'+
-      '</div>'+
-    '</div>';
-  }).join('');
+  var marketRes=_allEvents.filter(function(e){ return (e.title||'').toLowerCase().indexOf(qL)>-1||(e.category||'').toLowerCase().indexOf(qL)>-1||(e.slug||'').toLowerCase().indexOf(qL)>-1; }).slice(0,12);
+  var looksLikeUser=!/^0x[0-9a-fA-F]{40}$/.test(q)&&q.length>=2;
+  var traderPromise=looksLikeUser?fj(DATAv1+'/leaderboard?userName='+encodeURIComponent(q)).then(function(d){return Array.isArray(d)?d:[];}).catch(function(){return [];}):Promise.resolve([]);
+  traderPromise.then(function(users){
+    _gsItems=marketRes;
+    setTxt('gsCnt',(users.length+marketRes.length)+' results');
+    if(!users.length&&!marketRes.length){ el.innerHTML='<div class="sempty">No traders or markets found for "'+esc(q)+'"</div>'; return; }
+    var userHtml=users.slice(0,8).map(function(u){ var addr=u.proxyWallet||''; var nm=u.userName||u.name||addr; return '<div class="sitem" onclick="gsTrader(\''+esc(addr)+'\')"><div class="sitem-ico">👤</div><div class="sitem-body"><div class="sitem-title">'+esc(nm)+'</div><div class="sitem-meta"><span class="badge bg">Trader</span>'+(u.rank?'<span class="badge bbl">Rank #'+esc(String(u.rank))+'</span>':'')+(addr?'<span class="badge bg mono">'+esc(short(addr))+'</span>':'')+'</div></div></div>'; }).join('');
+    var marketHtml=marketRes.map(function(e,i){ var mkts=e.markets||[]; var m0=mkts[0]||{}; var price=parseFloat(m0.lastTradePrice||0); var vol24=parseFloat(e.volume24hr||0); var isM=mkts.length>1; var cat=e.category||''; var ico=cat.match(/sport|soccer|nba|football/i)?'⚽':cat.match(/crypto|bitcoin|btc/i)?'₿':cat.match(/politic|election/i)?'🗳':'📊'; var pc=price>=.5?'var(--green)':'var(--red)'; return '<div class="sitem" onclick="gsClick('+i+')"><div class="sitem-ico">'+ico+'</div><div class="sitem-body"><div class="sitem-title">'+esc(trunc(e.title||'Unknown',54))+'</div><div class="sitem-meta">'+(price&&!isM?'<span class="badge bg" style="color:'+pc+';font-family:JetBrains Mono,monospace">'+(price*100).toFixed(0)+'%</span>':'')+(vol24?'<span class="badge bg">24h '+fm(vol24)+'</span>':'')+(cat?'<span class="badge bbl">'+esc(cat)+'</span>':'')+(isM?'<span class="badge bg">'+mkts.length+' options</span>':'')+'</div></div></div>'; }).join('');
+    el.innerHTML=userHtml+marketHtml;
+  });
 }
 function gsClick(idx){
   var ev=_gsItems[idx]; if(!ev)return;
@@ -606,6 +591,7 @@ function gsClick(idx){
   _evData.unshift(ev);
   openMktModal(0);
 }
+function gsTrader(addr){ if(!addr)return; closeSearch(); goPage('trader'); ge('tInput').value=addr; doTrader(); }
 
 /* ═════ EVENTS LOADER ═════ */
 function fetchEvents(cb){
@@ -642,7 +628,7 @@ function doTrader(){
     ?Promise.resolve({addr:raw,meta:null})
     :fj(DATAv1+'/leaderboard?userName='+encodeURIComponent(raw)).then(function(d){
         var list=Array.isArray(d)?d:[];
-        if(list.length>0&&list[0].proxyWallet)return{addr:list[0].proxyWallet,meta:list[0]};
+        if(list.length>0&&list[0].proxyWallet)return{addr:list[0].proxyWallet,meta:list[0],matches:list};
         throw new Error('Username "'+raw+'" not found. Use the full 0x wallet address.');
       });
   rP.then(function(res){
@@ -661,7 +647,7 @@ function doTrader(){
       var pos=ok(rs[1]),cl=ok(rs[2]),act=ok(rs[3]),tr=ok(rs[4]);
       var lb=rs[5].status==='fulfilled'?rs[5].value:null;
       var lbD=res.meta||(Array.isArray(lb)?lb[0]:lb)||null;
-      buildProfile(res.addr,P,pos,tr,lbD);
+      buildProfile(res.addr,P,pos,tr,lbD,res.matches||[]);
       buildStats(pos,cl,tr);
       buildPositions(pos);
       buildClosed(cl);
@@ -673,7 +659,7 @@ function doTrader(){
   }).catch(function(e){ hide('tLd'); showErr('tErr',e.message); })
     .finally(function(){ ge('tBtn').disabled=false; ge('tBtn').textContent='Lookup'; });
 }
-function buildProfile(addr,P,pos,tr,lbD){
+function buildProfile(addr,P,pos,tr,lbD,matches){
   var name=(P&&(P.name||P.pseudonym))||(lbD&&lbD.userName)||short(addr);
   var init=(name||'?')[0].toUpperCase();
   var img=(P&&(P.profileImage||P.profileImageOptimized))||(lbD&&lbD.profileImage)||'';
@@ -701,7 +687,9 @@ function buildProfile(addr,P,pos,tr,lbD){
       '<div class="vs"><div class="vs-l">All-Time Vol</div><div class="vs-v cp">'+fm(vol)+'</div></div>'+
       (pnl!==null?'<div class="vs"><div class="vs-l">All-Time P&L</div><div class="vs-v '+(pnl>=0?'cg':'cr')+'">'+fm(pnl,2)+'</div></div>':'')+
     '</div>';
+  if(matches&&matches.length>1){ ge('tProf').innerHTML+='<div style="margin-top:10px;font-size:11px;color:var(--sub)">Matched traders: '+matches.map(function(m){ var a=m.proxyWallet||''; var n=esc(m.userName||short(a)); return (!a||a===addr)?n:n+' <a href="#" onclick="ge(\'tInput\').value=\''+esc(a)+'\';doTrader();return false" style="color:var(--blue2);text-decoration:none">open</a>'; }).join(' · ')+'</div>'; }
 }
+
 function buildStats(pos,cl,tr){
   var cur=pos.reduce(function(s,p){return s+parseFloat(p.currentValue||0);},0);
   var upnl=pos.reduce(function(s,p){return s+parseFloat(p.cashPnl||0);},0);
@@ -912,10 +900,23 @@ function buildMktModal(ev,actData){
         '<div style="font-size:11px;color:var(--muted)">Yes probability</div></div></div></div>';
   }
   var ids=parseIds(m0);
+  if(isM){
+    html+='<div class="msec"><div class="msect">Orderbooks — all outcomes</div><div id="obC"><div class="ld on" style="padding:10px 0"><div class="spin"></div></div></div></div>';
+    ge('mktB').innerHTML=html;
+    Promise.allSettled(markets.map(function(m){
+      var mIds=parseIds(m);
+      if(mIds.length<2)return Promise.resolve({name:m.groupItemTitle||m.question||'Outcome',html:'<div class="empty" style="padding:8px">Orderbook unavailable</div>'});
+      return Promise.all([getBook(mIds[0]),getBook(mIds[1])]).then(function(obs){ return {name:m.groupItemTitle||m.question||'Outcome',html:buildOb(obs[0],obs[1])}; });
+    })).then(function(rows){
+      var el2=ge('obC'); if(!el2)return;
+      el2.innerHTML=rows.map(function(r){ if(r.status!=='fulfilled')return ''; return '<div style="margin-bottom:10px"><div class="msect" style="margin-bottom:6px">'+esc(trunc(r.value.name,48))+'</div>'+r.value.html+'</div>'; }).join('')||'<div class="empty">No orderbooks available</div>';
+    });
+    return;
+  }
   if(ids.length>=2){
     html+='<div class="msec"><div class="msect">Orderbook — YES / NO</div><div id="obC"><div class="ld on" style="padding:10px 0"><div class="spin"></div></div></div></div>';
     ge('mktB').innerHTML=html;
-    Promise.all([fj(CLOB+'/book?token_id='+ids[0]).catch(function(){return null;}),fj(CLOB+'/book?token_id='+ids[1]).catch(function(){return null;})]).then(function(obs){ var el2=ge('obC'); if(el2)el2.innerHTML=buildOb(obs[0],obs[1]); });
+    Promise.all([getBook(ids[0]),getBook(ids[1])]).then(function(obs){ var el2=ge('obC'); if(el2)el2.innerHTML=buildOb(obs[0],obs[1]); });
     return;
   }
   ge('mktB').innerHTML=html||'<div class="empty">No data available</div>';
