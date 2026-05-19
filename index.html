@@ -277,7 +277,7 @@ tr:hover td{background:rgba(79,142,247,.025)}
       <input id="gsIn" placeholder="Search markets and traders…" autocomplete="off" spellcheck="false">
       <button class="sclose" id="gsClose">✕</button>
     </div>
-    <div id="gsRes" class="sresults"><div class="sempty">Type to search across all markets…</div></div>
+    <div id="gsRes" class="sresults"><div class="sempty">Type to search markets and traders…</div></div>
     <div class="shint"><span id="gsHint">↑↓ navigate · Enter to open · Esc to close</span><span id="gsCnt" style="color:var(--muted)"></span></div>
   </div>
 </div>
@@ -571,7 +571,7 @@ function closeSearch(){ ge('sov').classList.remove('on'); }
 function renderSearch(q){
   var el=ge('gsRes');
   if(!_allEvents.length){ el.innerHTML='<div class="sempty">⏳ Loading market index…</div>'; return; }
-  if(!q){ el.innerHTML='<div class="sempty">Search across '+_allEvents.length+' active markets</div>'; setTxt('gsCnt',''); return; }
+  if(!q){ el.innerHTML='<div class="sempty">Search across '+_allEvents.length+' active markets and traders</div>'; setTxt('gsCnt',''); return; }
   var qL=q.toLowerCase();
   var marketRes=_allEvents.filter(function(e){ return (e.title||'').toLowerCase().indexOf(qL)>-1||(e.category||'').toLowerCase().indexOf(qL)>-1||(e.slug||'').toLowerCase().indexOf(qL)>-1; }).slice(0,12);
   var looksLikeUser=!/^0x[0-9a-fA-F]{40}$/.test(q)&&q.length>=2;
